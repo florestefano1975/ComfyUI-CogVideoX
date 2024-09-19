@@ -1,6 +1,6 @@
 # CogVideoX
 # Created by AI Wiz Art (Stefano Flore)
-# Version: 3.2.1
+# Version: 1.0
 # https://stefanoflore.it
 # https://ai-wiz.art
 
