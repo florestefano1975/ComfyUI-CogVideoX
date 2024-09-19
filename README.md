@@ -11,6 +11,8 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Demo](/demo/demo-1.mp4)
 
+[![Watch the video]](/demo/demo-1.mp4)
+
 ![Demo](/demo/demo-3.mp4)
 
 You may get surprising results!
