@@ -11,7 +11,7 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![](https://github.com/florestefano1975/ComfyUI-CogVideoX/blob/main/demo/demo-1.mp4 )
 
-<video src="https://github.com/florestefano1975/ComfyUI-CogVideoX/blob/main/demo/demo-1.mp4" width="100%" controls autoplay loop></video>
+<video src='/demo/demo-1.mp4' />
 
 ![](/demo/demo-3.mp4)
 
