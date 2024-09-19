@@ -9,7 +9,7 @@ Original project: https://github.com/THUDM/CogVideo
 
 ## Demo
 
-![](/demo/demo-1.mp4)
+![](https://github.com/florestefano1975/ComfyUI-CogVideoX/blob/main/demo/demo-1.mp4 )
 
 ![](/demo/demo-3.mp4)
 
