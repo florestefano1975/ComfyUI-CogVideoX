@@ -8,5 +8,3 @@ Original project: https://github.com/THUDM/CogVideo
 ![Overview](/assets/screenshot.png)
 
 ## Demo
-
-<video src='demo/demo-1.mp4' width='100%'>
