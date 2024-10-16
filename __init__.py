@@ -1,6 +1,6 @@
 # CogVideoX
 # Created by AI Wiz Art (Stefano Flore)
-# Version: 1.0
+# Version: 1.1
 # https://stefanoflore.it
 # https://ai-wiz.art
 
@@ -43,7 +43,7 @@ class CogVideoXImageToVideoNode:
                 "image": ("IMAGE",),
                 "num_inference_steps": ("INT", {"default": 10, "min": 1, "max": 1000}),
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
-                "seed": ("INT", {"default": 42}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 99999999999999}),
             }
         }
 
@@ -144,6 +144,118 @@ class CogVideoXImageToVideoNode:
             print(f"Error during video generation: {str(e)}")
             raise
 
+class CogVideoXImageToVideoNodeExtended:
+    pipe = None
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "prompt": ("STRING", {"multiline": True}),
+                "image": ("IMAGE",),
+                "num_frames": ("INT", {"default": 98, "min": 49, "max": 1000}),
+                "context_frames": ("INT", {"default": 8, "min": 1, "max": 16}),
+                "num_inference_steps": ("INT", {"default": 10, "min": 1, "max": 1000}),
+                "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 99999999999999}),
+            }
+        }
+
+    RETURN_TYPES = ("VIDEO", "IMAGE")
+    RETURN_NAMES = ("video", "frames")
+    FUNCTION = "generate_extended_video"
+    CATEGORY = "AI WizArt/CogVideoX"
+
+    @classmethod
+    def load_model(cls):
+        if cls.pipe is None:
+            model = "THUDM/CogVideoX-5b-I2V"
+            model_dir = download_model_if_needed(model)
+            cls.pipe = CogVideoXImageToVideoPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
+            cls.pipe.scheduler = CogVideoXDPMScheduler.from_config(cls.pipe.scheduler.config, timestep_spacing="trailing")
+            cls.pipe.enable_sequential_cpu_offload()
+            cls.pipe.vae.enable_slicing()
+            cls.pipe.vae.enable_tiling()
+        return cls.pipe
+
+    def generate_extended_video(self, prompt, image, num_frames, num_inference_steps, guidance_scale, seed, context_frames):
+        try:
+            pipe = self.load_model()
+            generator = torch.Generator().manual_seed(seed)
+
+            pil_image = self.preprocess_image(image)
+
+            all_frames = []
+            segment_size = 49
+
+            with tqdm(total=num_frames, desc="Generating extended video") as progress_bar:
+                while len(all_frames) < num_frames:
+                    frames_to_generate = min(segment_size, num_frames - len(all_frames))
+
+                    if len(all_frames) >= context_frames:
+                        context_images = [Image.fromarray(frame) for frame in all_frames[-context_frames:]]
+                    else:
+                        context_images = [pil_image] * (context_frames - len(all_frames)) + [Image.fromarray(frame) for frame in all_frames]
+
+                    output = pipe(
+                        prompt=prompt,
+                        image=context_images,
+                        num_inference_steps=num_inference_steps,
+                        num_frames=frames_to_generate,
+                        use_dynamic_cfg=True,
+                        guidance_scale=guidance_scale,
+                        generator=generator,
+                    )
+
+                    new_frames = self.process_output_frames(output.frames)
+                    all_frames.extend(new_frames)
+
+                    progress_bar.update(len(new_frames))
+
+            all_frames = all_frames[:num_frames]
+
+            comfy_frames = [torch.from_numpy(frame).permute(2, 0, 1).float() / 255.0 for frame in all_frames]
+
+            return (all_frames, comfy_frames)
+        except Exception as e:
+            print(f"Error during extended video generation: {str(e)}")
+            raise
+
+    def preprocess_image(self, image):
+        if isinstance(image, torch.Tensor):
+            image = image.cpu().numpy()
+
+        if image.ndim == 4 and image.shape[0] == 1:
+            image = image[0]
+
+        if image.ndim == 3:
+            if image.shape[0] == 3:
+                image = np.transpose(image, (1, 2, 0))
+            elif image.shape[2] != 3:
+                raise ValueError(f"The image must have 3 color channels, found: {image.shape[2]}")
+
+        if image.dtype != np.uint8:
+            image = (image * 255).astype(np.uint8)
+
+        pil_image = Image.fromarray(image)
+        target_size = (720, 480)
+        return resize_and_crop(pil_image, target_size)
+
+    def process_output_frames(self, frames):
+        if isinstance(frames, list):
+            if all(isinstance(frame, list) for frame in frames):
+                return [np.array(frame) for sublist in frames for frame in sublist]
+            elif all(isinstance(frame, np.ndarray) for frame in frames):
+                return frames
+            elif all(isinstance(frame, Image.Image) for frame in frames):
+                return [np.array(frame) for frame in frames]
+            else:
+                raise ValueError(f"Unexpected frame type in output list: {type(frames[0])}")
+        elif isinstance(frames, np.ndarray):
+            return frames
+        else:
+            raise ValueError(f"Unexpected output type: {type(frames)}")
+
 def resize_and_crop(image, target_size):
     width, height = image.size
     target_width, target_height = target_size
@@ -203,10 +315,10 @@ class SaveVideoNode:
             video = video.cpu().numpy()
         
         if video.ndim == 4:
-            if video.shape[1] == 3 or video.shape[1] == 4:  # (T, C, H, W)
+            if video.shape[1] == 3 or video.shape[1] == 4:
                 video = np.transpose(video, (0, 2, 3, 1))
-        elif video.ndim == 3:  # Single image (H, W, C)
-            video = video[np.newaxis, ...]  # Add time dimension
+        elif video.ndim == 3:
+            video = video[np.newaxis, ...]
         
         print(f"Video shape after preprocessing: {video.shape}")
         
@@ -219,7 +331,7 @@ class SaveVideoNode:
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
         for frame in video:
-            if channels == 4:  # If the image has an alpha channel, remove it
+            if channels == 4:
                 frame = frame[:, :, :3]
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             out.write(frame_bgr)
@@ -230,8 +342,8 @@ class SaveVideoNode:
 
         return {"ui": {"text": f"Video saved to {output_path}"}}
 
-# Register nodes in ComfyUI
 NODE_CLASS_MAPPINGS = {
     "🤖 CogVideoX ➡️ Image-2-Video": CogVideoXImageToVideoNode,
+    "🤖 CogVideoX ➡️ Image-2-Video Extended": CogVideoXImageToVideoNodeExtended,
     "🤖 CogVideoX ➡️ Save Video": SaveVideoNode,
 }
