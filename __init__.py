@@ -1,6 +1,6 @@
 # CogVideoX
 # Created by AI Wiz Art (Stefano Flore)
-# Version: 1.1
+# Version: 1.2
 # https://stefanoflore.it
 # https://ai-wiz.art
 
@@ -31,6 +31,29 @@ def download_model_if_needed(model_name, local_dir="models/CogVideoX"):
         )
         print(f"Model {model_name} downloaded successfully.")
     return model_dir
+
+def resize_and_crop(image, target_size):
+    width, height = image.size
+    target_width, target_height = target_size
+    
+    aspect_ratio = width / height
+    target_aspect_ratio = target_width / target_height
+
+    if aspect_ratio > target_aspect_ratio:
+        new_height = target_height
+        new_width = int(new_height * aspect_ratio)
+    else:
+        new_width = target_width
+        new_height = int(new_width / aspect_ratio)
+
+    image = image.resize((new_width, new_height), Image.LANCZOS)
+
+    left = (new_width - target_width) // 2
+    top = (new_height - target_height) // 2
+    right = left + target_width
+    bottom = top + target_height
+
+    return image.crop((left, top, right, bottom))
 
 class CogVideoXImageToVideoNode:
     pipe = None
@@ -154,15 +177,15 @@ class CogVideoXImageToVideoNodeExtended:
                 "prompt": ("STRING", {"multiline": True}),
                 "image": ("IMAGE",),
                 "num_frames": ("INT", {"default": 98, "min": 49, "max": 1000}),
-                "context_frames": ("INT", {"default": 8, "min": 1, "max": 16}),
                 "num_inference_steps": ("INT", {"default": 10, "min": 1, "max": 1000}),
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
+                "use_dynamic_cfg": ("BOOLEAN", {"default": True}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 99999999999999}),
             }
         }
 
-    RETURN_TYPES = ("VIDEO", "IMAGE")
-    RETURN_NAMES = ("video", "frames")
+    RETURN_TYPES = ("VIDEO",)
+    RETURN_NAMES = ("video",)
     FUNCTION = "generate_extended_video"
     CATEGORY = "AI WizArt/CogVideoX"
 
@@ -170,7 +193,7 @@ class CogVideoXImageToVideoNodeExtended:
     def load_model(cls):
         if cls.pipe is None:
             model = "THUDM/CogVideoX-5b-I2V"
-            model_dir = download_model_if_needed(model)
+            model_dir = cls.download_model_if_needed(model)
             cls.pipe = CogVideoXImageToVideoPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
             cls.pipe.scheduler = CogVideoXDPMScheduler.from_config(cls.pipe.scheduler.config, timestep_spacing="trailing")
             cls.pipe.enable_sequential_cpu_offload()
@@ -178,48 +201,91 @@ class CogVideoXImageToVideoNodeExtended:
             cls.pipe.vae.enable_tiling()
         return cls.pipe
 
-    def generate_extended_video(self, prompt, image, num_frames, num_inference_steps, guidance_scale, seed, context_frames):
+    @staticmethod
+    def download_model_if_needed(model_name, local_dir="models/CogVideoX"):
+        model_dir = os.path.join(local_dir, model_name.split("/")[-1])
+        if not os.path.exists(model_dir):
+            print(f"Model {model_name} not found locally. Downloading...")
+            os.makedirs(local_dir, exist_ok=True)
+            snapshot_download(
+                repo_id=model_name,
+                local_dir=model_dir,
+                local_dir_use_symlinks=False,
+            )
+            print(f"Model {model_name} downloaded successfully.")
+        return model_dir
+
+    def generate_extended_video(self, prompt, image, num_frames, num_inference_steps, guidance_scale, use_dynamic_cfg, seed):
         try:
             pipe = self.load_model()
             generator = torch.Generator().manual_seed(seed)
 
             pil_image = self.preprocess_image(image)
+            print(f"Preprocessed image size: {pil_image.size}")
 
             all_frames = []
             segment_size = 49
+            last_frame = pil_image
 
             with tqdm(total=num_frames, desc="Generating extended video") as progress_bar:
                 while len(all_frames) < num_frames:
                     frames_to_generate = min(segment_size, num_frames - len(all_frames))
-
-                    if len(all_frames) >= context_frames:
-                        context_images = [Image.fromarray(frame) for frame in all_frames[-context_frames:]]
-                    else:
-                        context_images = [pil_image] * (context_frames - len(all_frames)) + [Image.fromarray(frame) for frame in all_frames]
+                    
+                    context_images = [last_frame]
+                    
+                    print(f"Generating segment. Last frame size: {last_frame.size}")
 
                     output = pipe(
                         prompt=prompt,
                         image=context_images,
                         num_inference_steps=num_inference_steps,
                         num_frames=frames_to_generate,
-                        use_dynamic_cfg=True,
+                        use_dynamic_cfg=use_dynamic_cfg,
                         guidance_scale=guidance_scale,
                         generator=generator,
+                        width=720,
+                        height=480,
                     )
 
                     new_frames = self.process_output_frames(output.frames)
-                    all_frames.extend(new_frames)
+                    print(f"Generated {len(new_frames)} new frames")
+                    
+                    if new_frames:
+                        all_frames.extend(new_frames)
+                        # Aggiorna last_frame con l'ultimo frame generato
+                        last_frame = Image.fromarray(new_frames[-1])
+                    else:
+                        print("Warning: No new frames generated in this iteration")
 
                     progress_bar.update(len(new_frames))
 
             all_frames = all_frames[:num_frames]
+            print(f"Final video length: {len(all_frames)} frames")
 
-            comfy_frames = [torch.from_numpy(frame).permute(2, 0, 1).float() / 255.0 for frame in all_frames]
-
-            return (all_frames, comfy_frames)
+            return (all_frames,)
         except Exception as e:
             print(f"Error during extended video generation: {str(e)}")
             raise
+
+    def process_output_frames(self, frames):
+        processed_frames = []
+        for frame in frames:
+            if isinstance(frame, list):
+                for subframe in frame:
+                    if isinstance(subframe, np.ndarray):
+                        processed_frames.append(subframe)
+                    elif isinstance(subframe, Image.Image):
+                        processed_frames.append(np.array(subframe))
+                    else:
+                        print(f"Unexpected subframe type: {type(subframe)}")
+            elif isinstance(frame, np.ndarray):
+                processed_frames.append(frame)
+            elif isinstance(frame, Image.Image):
+                processed_frames.append(np.array(frame))
+            else:
+                print(f"Unexpected frame type: {type(frame)}")
+        
+        return processed_frames
 
     def preprocess_image(self, image):
         if isinstance(image, torch.Tensor):
@@ -238,46 +304,12 @@ class CogVideoXImageToVideoNodeExtended:
             image = (image * 255).astype(np.uint8)
 
         pil_image = Image.fromarray(image)
-        target_size = (720, 480)
-        return resize_and_crop(pil_image, target_size)
-
-    def process_output_frames(self, frames):
-        if isinstance(frames, list):
-            if all(isinstance(frame, list) for frame in frames):
-                return [np.array(frame) for sublist in frames for frame in sublist]
-            elif all(isinstance(frame, np.ndarray) for frame in frames):
-                return frames
-            elif all(isinstance(frame, Image.Image) for frame in frames):
-                return [np.array(frame) for frame in frames]
-            else:
-                raise ValueError(f"Unexpected frame type in output list: {type(frames[0])}")
-        elif isinstance(frames, np.ndarray):
-            return frames
-        else:
-            raise ValueError(f"Unexpected output type: {type(frames)}")
-
-def resize_and_crop(image, target_size):
-    width, height = image.size
-    target_width, target_height = target_size
-    
-    aspect_ratio = width / height
-    target_aspect_ratio = target_width / target_height
-
-    if aspect_ratio > target_aspect_ratio:
-        new_height = target_height
-        new_width = int(new_height * aspect_ratio)
-    else:
-        new_width = target_width
-        new_height = int(new_width / aspect_ratio)
-
-    image = image.resize((new_width, new_height), Image.LANCZOS)
-
-    left = (new_width - target_width) // 2
-    top = (new_height - target_height) // 2
-    right = left + target_width
-    bottom = top + target_height
-
-    return image.crop((left, top, right, bottom))
+        
+        # Assicuriamoci che l'immagine sia esattamente 720x480
+        if pil_image.size != (720, 480):
+            pil_image = pil_image.resize((720, 480), Image.LANCZOS)
+        
+        return pil_image
 
 class SaveVideoNode:
     @classmethod

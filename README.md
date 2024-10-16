@@ -7,6 +7,10 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Overview](/assets/screenshot.png)
 
+## Version 1.2
+
+Update experimental node for video duration extension
+
 ## Version 1.1
 
 New experimental node for video duration extension
