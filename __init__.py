@@ -193,7 +193,7 @@ class CogVideoXImageToVideoNodeExtended:
         }
 
     RETURN_TYPES = ("VIDEO","VIDEO",)
-    RETURN_NAMES = ("normal video","interpolated video",)
+    RETURN_NAMES = ("normal_video","interpolated_video",)
     FUNCTION = "generate_extended_video"
     CATEGORY = "AI WizArt/CogVideoX"
 
