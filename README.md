@@ -5,7 +5,7 @@ Original project: https://github.com/THUDM/CogVideo
 
 **This custom node is in experimental version**
 
-![Overview](/assets/screenshot.png)
+![Overview](/assets/screenshot_2.png)
 
 ## Basic Parameters
 
