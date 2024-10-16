@@ -176,7 +176,7 @@ class CogVideoXImageToVideoNodeExtended:
             "required": {
                 "prompt": ("STRING", {"multiline": True}),
                 "image": ("IMAGE",),
-                "num_frames": ("INT", {"default": 98, "min": 49, "max": 1000}),
+                "num_frames": ("INT", {"default": 98, "min": 49, "max": 2**31-1, "step": 49}),
                 "num_inference_steps": ("INT", {"default": 10, "min": 1, "max": 1000}),
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
                 "use_dynamic_cfg": ("BOOLEAN", {"default": True}),
@@ -216,6 +216,8 @@ class CogVideoXImageToVideoNodeExtended:
         return model_dir
 
     def generate_extended_video(self, prompt, image, num_frames, num_inference_steps, guidance_scale, use_dynamic_cfg, seed):
+        num_frames = max(49, (num_frames // 49) * 49)
+        
         try:
             pipe = self.load_model()
             generator = torch.Generator().manual_seed(seed)
@@ -290,26 +292,48 @@ class CogVideoXImageToVideoNodeExtended:
     def preprocess_image(self, image):
         if isinstance(image, torch.Tensor):
             image = image.cpu().numpy()
-
+    
         if image.ndim == 4 and image.shape[0] == 1:
             image = image[0]
-
+    
         if image.ndim == 3:
             if image.shape[0] == 3:
                 image = np.transpose(image, (1, 2, 0))
             elif image.shape[2] != 3:
                 raise ValueError(f"The image must have 3 color channels, found: {image.shape[2]}")
-
+    
         if image.dtype != np.uint8:
             image = (image * 255).astype(np.uint8)
-
+    
         pil_image = Image.fromarray(image)
         
-        # Assicuriamoci che l'immagine sia esattamente 720x480
-        if pil_image.size != (720, 480):
-            pil_image = pil_image.resize((720, 480), Image.LANCZOS)
-        
-        return pil_image
+        # Ridimensiona l'immagine mantenendo l'aspect ratio
+        target_size = (720, 480)
+        aspect_ratio = pil_image.width / pil_image.height
+        target_aspect_ratio = target_size[0] / target_size[1]
+    
+        if aspect_ratio > target_aspect_ratio:
+            # L'immagine è più larga, ridimensioniamo basandoci sull'altezza
+            new_height = target_size[1]
+            new_width = int(new_height * aspect_ratio)
+        else:
+            # L'immagine è più alta, ridimensioniamo basandoci sulla larghezza
+            new_width = target_size[0]
+            new_height = int(new_width / aspect_ratio)
+    
+        resized_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+    
+        # Calcola le coordinate per il ritaglio centrale
+        left = (resized_image.width - target_size[0]) // 2
+        top = (resized_image.height - target_size[1]) // 2
+        right = left + target_size[0]
+        bottom = top + target_size[1]
+    
+        # Ritaglia l'immagine
+        cropped_image = resized_image.crop((left, top, right, bottom))
+    
+        print(f"Preprocessed image size: {cropped_image.size}")
+        return cropped_image
 
 class SaveVideoNode:
     @classmethod
