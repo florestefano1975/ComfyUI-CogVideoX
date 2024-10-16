@@ -1,6 +1,6 @@
 # CogVideoX
 # Created by AI Wiz Art (Stefano Flore)
-# Version: 1.2
+# Version: 1.3
 # https://stefanoflore.it
 # https://ai-wiz.art
 
@@ -18,6 +18,7 @@ from diffusers import (
 from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm import tqdm
+from scipy.ndimage import gaussian_filter
 
 def download_model_if_needed(model_name, local_dir="models/CogVideoX"):
     model_dir = os.path.join(local_dir, model_name.split("/")[-1])
@@ -166,7 +167,7 @@ class CogVideoXImageToVideoNode:
         except Exception as e:
             print(f"Error during video generation: {str(e)}")
             raise
-
+        
 class CogVideoXImageToVideoNodeExtended:
     pipe = None
 
@@ -181,11 +182,18 @@ class CogVideoXImageToVideoNodeExtended:
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
                 "use_dynamic_cfg": ("BOOLEAN", {"default": True}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 99999999999999}),
+                "interpolation_factor": ("INT", {"default": 1, "min": 1, "max": 7, "step": 2}),
+                "flow_precision": ("FLOAT", {"default": 0.5, "min": 0.1, "max": 1.0, "step": 0.1}),
+                "motion_threshold": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "smoothness": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
+                "flow_method": (["Farneback", "TV-L1", "DIS"],),
+                "edge_mode": (["Replicate", "Reflect", "Wrap", "Constant"],),
+                "interpolation_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.1}),
             }
         }
 
-    RETURN_TYPES = ("VIDEO",)
-    RETURN_NAMES = ("video",)
+    RETURN_TYPES = ("VIDEO","VIDEO",)
+    RETURN_NAMES = ("normal video","interpolated video",)
     FUNCTION = "generate_extended_video"
     CATEGORY = "AI WizArt/CogVideoX"
 
@@ -215,7 +223,8 @@ class CogVideoXImageToVideoNodeExtended:
             print(f"Model {model_name} downloaded successfully.")
         return model_dir
 
-    def generate_extended_video(self, prompt, image, num_frames, num_inference_steps, guidance_scale, use_dynamic_cfg, seed):
+    def generate_extended_video(self, prompt, image, num_frames, num_inference_steps, guidance_scale, use_dynamic_cfg, seed, 
+                                interpolation_factor, flow_precision, motion_threshold, smoothness, flow_method, edge_mode, interpolation_strength):
         num_frames = max(49, (num_frames // 49) * 49)
         
         try:
@@ -254,7 +263,6 @@ class CogVideoXImageToVideoNodeExtended:
                     
                     if new_frames:
                         all_frames.extend(new_frames)
-                        # Aggiorna last_frame con l'ultimo frame generato
                         last_frame = Image.fromarray(new_frames[-1])
                     else:
                         print("Warning: No new frames generated in this iteration")
@@ -262,12 +270,104 @@ class CogVideoXImageToVideoNodeExtended:
                     progress_bar.update(len(new_frames))
 
             all_frames = all_frames[:num_frames]
-            print(f"Final video length: {len(all_frames)} frames")
+            print(f"Final video length before interpolation: {len(all_frames)} frames")
 
-            return (all_frames,)
+            interpolated_frames = self.apply_optical_flow_interpolation(all_frames, interpolation_factor, flow_precision, 
+                                                                        motion_threshold, smoothness, flow_method, edge_mode, 
+                                                                        interpolation_strength)
+
+            print(f"Final video length after interpolation: {len(interpolated_frames)} frames")
+
+            return (all_frames,interpolated_frames,)
         except Exception as e:
             print(f"Error during extended video generation: {str(e)}")
             raise
+
+    def apply_optical_flow_interpolation(self, frames, factor, precision, threshold, smoothness, method, edge_mode, strength):
+        interpolated = []
+        flow_params = {
+            'pyr_scale': 0.5,
+            'levels': 3,
+            'winsize': 15,
+            'iterations': 3,
+            'poly_n': 5,
+            'poly_sigma': 1.2,
+            'flags': 0
+        }
+
+        with tqdm(total=len(frames) - 1, desc="Applying optical flow interpolation") as pbar:
+            for i in range(len(frames) - 1):
+                frame1 = frames[i]
+                frame2 = frames[i + 1]
+                
+                gray1 = cv2.cvtColor(frame1, cv2.COLOR_RGB2GRAY)
+                gray2 = cv2.cvtColor(frame2, cv2.COLOR_RGB2GRAY)
+
+                if method == "Farneback":
+                    flow = cv2.calcOpticalFlowFarneback(gray1, gray2, None, **flow_params)
+                elif method == "TV-L1":
+                    try:
+                        optical_flow = cv2.optflow.DualTVL1OpticalFlow_create()
+                    except AttributeError:
+                        try:
+                            optical_flow = cv2.createOptFlow_DualTVL1()
+                        except AttributeError:
+                            print("TV-L1 optical flow not available. Using Farneback method instead.")
+                            flow = cv2.calcOpticalFlowFarneback(gray1, gray2, None, **flow_params)
+                        else:
+                            flow = optical_flow.calc(gray1, gray2, None)
+                    else:
+                        flow = optical_flow.calc(gray1, gray2, None)
+                elif method == "DIS":
+                    try:
+                        flow = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM).calc(gray1, gray2, None)
+                    except AttributeError:
+                        print("DIS optical flow not available. Using Farneback method instead.")
+                        flow = cv2.calcOpticalFlowFarneback(gray1, gray2, None, **flow_params)
+
+                flow = self.apply_smoothness(flow, smoothness)
+
+                flow_magnitude = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
+                flow[flow_magnitude < threshold] = 0
+
+                interpolated.append(frame1)
+                
+                for j in range(1, factor + 1):
+                    t = j / (factor + 1)
+                    warped = self.warp_flow(frame1, flow * t * strength, edge_mode)
+                    blended = cv2.addWeighted(frame1, 1 - t, warped, t, 0)
+                    interpolated.append(blended)
+
+                pbar.update(1)
+
+        interpolated.append(frames[-1])
+        return interpolated
+
+    def apply_smoothness(self, flow, smoothness):
+        if smoothness > 0:
+            sigma = smoothness * 5
+            flow[:,:,0] = gaussian_filter(flow[:,:,0], sigma=sigma)
+            flow[:,:,1] = gaussian_filter(flow[:,:,1], sigma=sigma)
+        return flow
+
+    def warp_flow(self, img, flow, edge_mode):
+        h, w = flow.shape[:2]
+        flow = -flow
+        flow[:,:,0] += np.arange(w)
+        flow[:,:,1] += np.arange(h)[:,np.newaxis]
+        
+        if edge_mode == "Replicate":
+            border_mode = cv2.BORDER_REPLICATE
+        elif edge_mode == "Reflect":
+            border_mode = cv2.BORDER_REFLECT
+        elif edge_mode == "Wrap":
+            border_mode = cv2.BORDER_WRAP
+        elif edge_mode == "Constant":
+            border_mode = cv2.BORDER_CONSTANT
+        else:
+            border_mode = cv2.BORDER_REPLICATE
+
+        return cv2.remap(img, flow, None, cv2.INTER_LINEAR, borderMode=border_mode)
 
     def process_output_frames(self, frames):
         processed_frames = []
@@ -292,48 +392,23 @@ class CogVideoXImageToVideoNodeExtended:
     def preprocess_image(self, image):
         if isinstance(image, torch.Tensor):
             image = image.cpu().numpy()
-    
+
         if image.ndim == 4 and image.shape[0] == 1:
             image = image[0]
-    
+
         if image.ndim == 3:
             if image.shape[0] == 3:
                 image = np.transpose(image, (1, 2, 0))
             elif image.shape[2] != 3:
                 raise ValueError(f"The image must have 3 color channels, found: {image.shape[2]}")
-    
+
         if image.dtype != np.uint8:
             image = (image * 255).astype(np.uint8)
-    
+
         pil_image = Image.fromarray(image)
         
-        # Ridimensiona l'immagine mantenendo l'aspect ratio
         target_size = (720, 480)
-        aspect_ratio = pil_image.width / pil_image.height
-        target_aspect_ratio = target_size[0] / target_size[1]
-    
-        if aspect_ratio > target_aspect_ratio:
-            # L'immagine è più larga, ridimensioniamo basandoci sull'altezza
-            new_height = target_size[1]
-            new_width = int(new_height * aspect_ratio)
-        else:
-            # L'immagine è più alta, ridimensioniamo basandoci sulla larghezza
-            new_width = target_size[0]
-            new_height = int(new_width / aspect_ratio)
-    
-        resized_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
-    
-        # Calcola le coordinate per il ritaglio centrale
-        left = (resized_image.width - target_size[0]) // 2
-        top = (resized_image.height - target_size[1]) // 2
-        right = left + target_size[0]
-        bottom = top + target_size[1]
-    
-        # Ritaglia l'immagine
-        cropped_image = resized_image.crop((left, top, right, bottom))
-    
-        print(f"Preprocessed image size: {cropped_image.size}")
-        return cropped_image
+        return resize_and_crop(pil_image, target_size)
 
 class SaveVideoNode:
     @classmethod
