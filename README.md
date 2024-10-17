@@ -7,7 +7,7 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Overview](/assets/screenshot_2.png)
 
-## Basic Parameters
+## Parameters
 
 ### prompt (STRING)
 
