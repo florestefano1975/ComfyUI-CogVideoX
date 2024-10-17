@@ -9,7 +9,7 @@ Original project: https://github.com/THUDM/CogVideo
 
 ## Basic Parameters
 
-1. prompt (STRING)
+### prompt (STRING)
 
 - Description: The text that guides the video generation.
 - Type: Multiline string.
