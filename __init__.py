@@ -177,7 +177,7 @@ class CogVideoXImageToVideoNodeExtended:
             "required": {
                 "prompt": ("STRING", {"multiline": True}),
                 "image": ("IMAGE",),
-                "num_frames": ("INT", {"default": 98, "min": 49, "max": 2**31-1, "step": 49}),
+                "num_frames": ("INT", {"default": 49, "min": 49, "max": 2**31-1, "step": 49}),
                 "num_inference_steps": ("INT", {"default": 10, "min": 1, "max": 1000}),
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
                 "use_dynamic_cfg": ("BOOLEAN", {"default": True}),

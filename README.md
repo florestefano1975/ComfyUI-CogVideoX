@@ -15,131 +15,93 @@ Original project: https://github.com/THUDM/CogVideo
 - Type: Multiline string.
 - Impact: Directly influences the content and style of the generated video.
 
-2. image (IMAGE)
+### image (IMAGE)
 
 - Description: The input image from which to start the video generation.
+- Type: Image
+- Impact: Serves as the starting point for the video, strongly influencing the first frames.
 
-Type: Image
+### num_frames (INT)
 
-Impact: Serves as the starting point for the video, strongly influencing the first frames.
+- Description: The total number of frames to generate.
+- Default: 49
+- Range: 49 - 2^31-1 (practically unlimited)
+- Impact: Determines the length of the final video.
 
-3. num_frames (INT)
+### num_inference_steps (INT)
 
-Description: The total number of frames to generate.
+- Description: The number of inference steps for each frame.
+- Default: 10
+- Range: 1 - 1000
+- Impact: Influences the quality and detail of each generated frame. More steps generally mean higher quality but longer processing times.
 
-Default: 98
+### guidance_scale (FLOAT)
 
-Range: 49 - 2^31-1 (practically unlimited)
+- Description: Controls how closely the model follows the prompt.
+- Default: 6.0
+- Range: 0.1 - 30.0
+- Impact: Higher values produce results more faithful to the prompt but can lead to artifacts.
 
-Step: 49
+### use_dynamic_cfg (BOOLEAN)
 
-Impact: Determines the length of the final video.
+- Description: Enables or disables Dynamic Guided Configuration.
+- Default: True
+- Impact: When enabled, it can improve video consistency and quality.
 
-4. num_inference_steps (INT)
+### seed (INT)
 
-Description: The number of inference steps for each frame.
+- Description: The seed for random generation.
+- Default: 0
+- Range: 0 - 99999999999999
+- Impact: Controls result reproducibility. The same seed will always produce the same output with the same parameters.
+- Optical Flow Interpolation Parameters
 
-Default: 10
+### interpolation_factor (INT)
 
-Range: 1 - 1000
+- Description: Determines how many intermediate frames to create between each pair of original frames.
+- Default: 1
+- Range: 1 - 7 (steps of 2)
+- Impact: Increases video smoothness by adding interpolated frames. A value of 1 doubles the number of frames, 3 quadruples it, etc.
 
-Impact: Influences the quality and detail of each generated frame. More steps generally mean higher quality but longer processing times.
-
-5. guidance_scale (FLOAT)
-
-Description: Controls how closely the model follows the prompt.
-
-Default: 6.0
-
-Range: 0.1 - 30.0
-
-Impact: Higher values produce results more faithful to the prompt but can lead to artifacts.
-
-6. use_dynamic_cfg (BOOLEAN)
-
-Description: Enables or disables Dynamic Guided Configuration.
-
-Default: True
-
-Impact: When enabled, it can improve video consistency and quality.
-
-7. seed (INT)
-
-Description: The seed for random generation.
-
-Default: 0
-
-Range: 0 - 99999999999999
-
-Impact: Controls result reproducibility. The same seed will always produce the same output with the same parameters.
-
-Optical Flow Interpolation Parameters
-
-8. interpolation_factor (INT)
-
-Description: Determines how many intermediate frames to create between each pair of original frames.
-
-Default: 1
-
-Range: 1 - 7 (steps of 2)
-
-Impact: Increases video smoothness by adding interpolated frames. A value of 1 doubles the number of frames, 3 quadruples it, etc.
-
-9. flow_precision (FLOAT)
+### flow_precision (FLOAT)
 
 - Description: Controls the level of detail in optical flow calculation.
-
 - Default: 0.5
-
 - Range: 0.1 - 1.0
+- Impact: Higher values produce more precise optical flow but require more computation time.
 
-Impact: Higher values produce more precise optical flow but require more computation time.
+### motion_threshold (FLOAT)
 
-10. motion_threshold (FLOAT)
+- Description: Determines the minimum amount of movement required to apply interpolation.
+- Default: 0.1
+- Range: 0.0 - 1.0
+- Impact: Lower values interpolate even small movements, higher values only significant movements.
 
-Description: Determines the minimum amount of movement required to apply interpolation.
+### smoothness (FLOAT)
 
-Default: 0.1
+- Description: Controls how "smooth" the interpolated movement should be.
+- Default: 0.5
+- Range: 0.0 - 1.0
+- Impact: Higher values produce smoother transitions but may reduce movement details.
 
-Range: 0.0 - 1.0
+### flow_method (COMBO)
 
-Impact: Lower values interpolate even small movements, higher values only significant movements.
+- Description: The method used to calculate optical flow.
+- Options: ["Farneback", "TV-L1", "DIS"]
+- Impact: Each method has different characteristics in terms of accuracy and speed.
 
-11. smoothness (FLOAT)
+### edge_mode (COMBO)
 
-Description: Controls how "smooth" the interpolated movement should be.
+- Description: How to handle image edges during interpolation.
+- Options: ["Replicate", "Reflect", "Wrap", "Constant"]
+- Impact: Influences the appearance of edges in interpolated frames.
 
-Default: 0.5
+### interpolation_strength (FLOAT)
 
-Range: 0.0 - 1.0
-
-Impact: Higher values produce smoother transitions but may reduce movement details.
-
-12. flow_method (COMBO)
-
-Description: The method used to calculate optical flow.
-
-Options: ["Farneback", "TV-L1", "DIS"]
-
-Impact: Each method has different characteristics in terms of accuracy and speed.
-
-13. edge_mode (COMBO)
-
-Description: How to handle image edges during interpolation.
-
-Options: ["Replicate", "Reflect", "Wrap", "Constant"]
-
-Impact: Influences the appearance of edges in interpolated frames.
-
-14. interpolation_strength (FLOAT)
-
-Description: How heavily to apply the calculated interpolation.
-
-Default: 1.0
-
-Range: 0.0 - 1.0
-
-Impact: Lower values produce subtler interpolation, higher values more pronounced interpolation.
+- Description: How heavily to apply the calculated interpolation.
+- Default: 1.0
+- Range: 0.0 - 1.0
+- Impact: Lower values produce subtler interpolation, higher values more pronounced interpolation.
 
 ## Updates
 
