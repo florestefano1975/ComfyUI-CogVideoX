@@ -7,6 +7,8 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Overview](/assets/screenshot_2.png)
 
+![Video Demo 1](/demo/cogvideox_test_001.mp4)
+
 ## Parameters
 
 ### prompt (STRING)
