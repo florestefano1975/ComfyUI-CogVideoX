@@ -7,7 +7,7 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Overview](/assets/screenshot_2.png)
 
-https://user-images.githubusercontent.com/florestefano1975/ComfyUI-CogVideoX/demo/cogvideox_test_001.mp4
+<video src="/demo/cogvideox_test_001.mp4" controls="controls" style="max-width: 730px;">
 
 
 ## Parameters
