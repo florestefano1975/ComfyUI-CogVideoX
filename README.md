@@ -11,15 +11,13 @@ Original project: https://github.com/THUDM/CogVideo
 
 1. prompt (STRING)
 
-Description: The text that guides the video generation.
-
-Type: Multiline string
-
-Impact: Directly influences the content and style of the generated video.
+- Description: The text that guides the video generation.
+- Type: Multiline string.
+- Impact: Directly influences the content and style of the generated video.
 
 2. image (IMAGE)
 
-Description: The input image from which to start the video generation.
+- Description: The input image from which to start the video generation.
 
 Type: Image
 
@@ -89,11 +87,11 @@ Impact: Increases video smoothness by adding interpolated frames. A value of 1 d
 
 9. flow_precision (FLOAT)
 
-Description: Controls the level of detail in optical flow calculation.
+- Description: Controls the level of detail in optical flow calculation.
 
-Default: 0.5
+- Default: 0.5
 
-Range: 0.1 - 1.0
+- Range: 0.1 - 1.0
 
 Impact: Higher values produce more precise optical flow but require more computation time.
 
