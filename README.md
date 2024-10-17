@@ -7,7 +7,7 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Overview](/assets/screenshot_2.png)
 
-[<video src="/demo/cogvideox_test_001.mp4"></video>](https://github.com/user-attachments/assets/e3d4d85c-223c-4622-b063-bf45a4bce48c)
+https://github.com/user-attachments/assets/e3d4d85c-223c-4622-b063-bf45a4bce48c
 
 ## Parameters
 
