@@ -7,11 +7,6 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Overview](/assets/screenshot_2.png)
 
-<video controls="controls" style="max-width: 730px; height: auto;">
-  <source src="/demo/cogvideox_test_001.mp4" type="video/mp4">
-</video>
-
-
 ## Parameters
 
 ### prompt (STRING)
