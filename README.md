@@ -7,7 +7,8 @@ Original project: https://github.com/THUDM/CogVideo
 
 ![Overview](/assets/screenshot_2.png)
 
-https://github.com/user-attachments/assets/e3d4d85c-223c-4622-b063-bf45a4bce48c
+https://user-images.githubusercontent.com/florestefano1975/ComfyUI-CogVideoX/demo/cogvideox_test_001.mp4
+
 
 ## Parameters
 
