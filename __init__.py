@@ -1,6 +1,6 @@
 # CogVideoX
 # Created by AI Wiz Art (Stefano Flore)
-# Version: 1.3
+# Version: 1.3.1
 # https://stefanoflore.it
 # https://ai-wiz.art
 
@@ -474,7 +474,7 @@ class SaveVideoNode:
         return {"ui": {"text": f"Video saved to {output_path}"}}
 
 NODE_CLASS_MAPPINGS = {
-    "🤖 CogVideoX ➡️ Image-2-Video": CogVideoXImageToVideoNode,
-    "🤖 CogVideoX ➡️ Image-2-Video Extended": CogVideoXImageToVideoNodeExtended,
-    "🤖 CogVideoX ➡️ Save Video": SaveVideoNode,
+    "CogVideoX Image-2-Video": CogVideoXImageToVideoNode,
+    "CogVideoX Image-2-Video Extended": CogVideoXImageToVideoNodeExtended,
+    "CogVideoX Save Video": SaveVideoNode,
 }
