@@ -1,6 +1,6 @@
 # CogVideoX
 # Created by AI Wiz Art (Stefano Flore)
-# Version: 1.3.1
+# Version: 1.4
 # https://stefanoflore.it
 # https://ai-wiz.art
 
@@ -20,8 +20,12 @@ from PIL import Image
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter
 
-def download_model_if_needed(model_name, local_dir="models/CogVideoX"):
+COMFYUI_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def download_model_if_needed(model_name):
+    local_dir = os.path.join(COMFYUI_ROOT, "models", "CogVideoX")
     model_dir = os.path.join(local_dir, model_name.split("/")[-1])
+    
     if not os.path.exists(model_dir):
         print(f"Model {model_name} not found locally. Downloading...")
         os.makedirs(local_dir, exist_ok=True)
@@ -30,7 +34,7 @@ def download_model_if_needed(model_name, local_dir="models/CogVideoX"):
             local_dir=model_dir,
             local_dir_use_symlinks=False,
         )
-        print(f"Model {model_name} downloaded successfully.")
+        print(f"Model {model_name} downloaded successfully to {model_dir}")
     return model_dir
 
 def resize_and_crop(image, target_size):
@@ -56,118 +60,6 @@ def resize_and_crop(image, target_size):
 
     return image.crop((left, top, right, bottom))
 
-class CogVideoXImageToVideoNode:
-    pipe = None
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "prompt": ("STRING", {"multiline": True}),
-                "image": ("IMAGE",),
-                "num_inference_steps": ("INT", {"default": 10, "min": 1, "max": 1000}),
-                "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 99999999999999}),
-            }
-        }
-
-    RETURN_TYPES = ("VIDEO", "IMAGE")
-    RETURN_NAMES = ("video", "frames")
-    FUNCTION = "generate_video"
-    CATEGORY = "AI WizArt/CogVideoX"
-
-    @classmethod
-    def load_model(cls):
-        if cls.pipe is None:
-            model = "THUDM/CogVideoX-5b-I2V"
-            model_dir = download_model_if_needed(model)
-            cls.pipe = CogVideoXImageToVideoPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
-            cls.pipe.scheduler = CogVideoXDPMScheduler.from_config(cls.pipe.scheduler.config, timestep_spacing="trailing")
-            cls.pipe.enable_sequential_cpu_offload()
-            cls.pipe.vae.enable_slicing()
-            cls.pipe.vae.enable_tiling()
-        return cls.pipe
-
-    def generate_video(self, prompt, image, num_inference_steps, guidance_scale, seed):
-        try:
-            pipe = self.load_model()
-            generator = torch.Generator().manual_seed(seed)
-
-            if isinstance(image, torch.Tensor):
-                image = image.cpu().numpy()
-
-            print(f"Input image shape: {image.shape}")
-
-            if image.ndim == 4:
-                if image.shape[0] == 1:
-                    image = image[0]
-                else:
-                    raise ValueError(f"Unsupported image format: {image.shape}")
-
-            if image.ndim == 3:
-                if image.shape[0] == 3:
-                    image = np.transpose(image, (1, 2, 0))
-                elif image.shape[2] != 3:
-                    raise ValueError(f"The image must have 3 color channels, found: {image.shape[2]}")
-
-            if image.dtype != np.uint8:
-                image = (image * 255).astype(np.uint8)
-
-            pil_image = Image.fromarray(image)
-            print(f"PIL Image dimensions: {pil_image.size}")
-
-            target_size = (720, 480)
-            pil_image = resize_and_crop(pil_image, target_size)
-            print(f"Image dimensions after resizing: {pil_image.size}")
-
-            with tqdm(total=num_inference_steps, desc="Generating video") as progress_bar:
-                def update_progress(step, timestep, latents):
-                    progress_bar.update(1)
-                
-                original_step = pipe.scheduler.step
-                def step_with_progress(*args, **kwargs):
-                    result = original_step(*args, **kwargs)
-                    update_progress(None, None, None)
-                    return result
-                pipe.scheduler.step = step_with_progress
-
-                output = pipe(
-                    prompt=prompt,
-                    image=pil_image,
-                    num_inference_steps=num_inference_steps,
-                    num_frames=49,
-                    use_dynamic_cfg=True,
-                    guidance_scale=guidance_scale,
-                    generator=generator,
-                )
-
-                pipe.scheduler.step = original_step
-
-            if isinstance(output.frames, list):
-                if all(isinstance(frame, list) for frame in output.frames):
-                    video_frames = [np.array(frame) for sublist in output.frames for frame in sublist]
-                elif all(isinstance(frame, np.ndarray) for frame in output.frames):
-                    video_frames = output.frames
-                elif all(isinstance(frame, Image.Image) for frame in output.frames):
-                    video_frames = [np.array(frame) for frame in output.frames]
-                else:
-                    raise ValueError(f"Unexpected frame type in output list: {type(output.frames[0])}")
-            elif isinstance(output.frames, np.ndarray):
-                video_frames = output.frames
-            else:
-                raise ValueError(f"Unexpected output type: {type(output.frames)}")
-
-            # Ensure all frames are in the correct format (H, W, C)
-            video_frames = [frame if frame.ndim == 3 else frame[0] for frame in video_frames]
-            
-            # Convert to the format expected by ComfyUI
-            comfy_frames = [torch.from_numpy(frame).permute(2, 0, 1).float() / 255.0 for frame in video_frames]
-
-            return (video_frames, comfy_frames)
-        except Exception as e:
-            print(f"Error during video generation: {str(e)}")
-            raise
-        
 class CogVideoXImageToVideoNodeExtended:
     pipe = None
 
@@ -182,18 +74,19 @@ class CogVideoXImageToVideoNodeExtended:
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.1, "max": 30.0}),
                 "use_dynamic_cfg": ("BOOLEAN", {"default": True}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 99999999999999}),
-                "interpolation_factor": ("INT", {"default": 1, "min": 1, "max": 7, "step": 2}),
+                "interpolation_factor": ("INT", {"default": 3, "min": 1, "max": 7, "step": 2}),
                 "flow_precision": ("FLOAT", {"default": 0.5, "min": 0.1, "max": 1.0, "step": 0.1}),
                 "motion_threshold": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "smoothness": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "flow_method": (["Farneback", "TV-L1", "DIS"],),
+                "flow_method": (["DIS", "Farneback", "TV-L1"],),
                 "edge_mode": (["Replicate", "Reflect", "Wrap", "Constant"],),
                 "interpolation_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.1}),
+                "upscale_factor": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 2.0, "step": 0.05}),
             }
         }
 
-    RETURN_TYPES = ("VIDEO","VIDEO",)
-    RETURN_NAMES = ("normal_video","interpolated_video",)
+    RETURN_TYPES = ("VIDEO",)
+    RETURN_NAMES = ("video_out",)
     FUNCTION = "generate_extended_video"
     CATEGORY = "AI WizArt/CogVideoX"
 
@@ -210,21 +103,12 @@ class CogVideoXImageToVideoNodeExtended:
         return cls.pipe
 
     @staticmethod
-    def download_model_if_needed(model_name, local_dir="models/CogVideoX"):
-        model_dir = os.path.join(local_dir, model_name.split("/")[-1])
-        if not os.path.exists(model_dir):
-            print(f"Model {model_name} not found locally. Downloading...")
-            os.makedirs(local_dir, exist_ok=True)
-            snapshot_download(
-                repo_id=model_name,
-                local_dir=model_dir,
-                local_dir_use_symlinks=False,
-            )
-            print(f"Model {model_name} downloaded successfully.")
-        return model_dir
+    def download_model_if_needed(model_name):
+        return download_model_if_needed(model_name)
 
     def generate_extended_video(self, prompt, image, num_frames, num_inference_steps, guidance_scale, use_dynamic_cfg, seed, 
-                                interpolation_factor, flow_precision, motion_threshold, smoothness, flow_method, edge_mode, interpolation_strength):
+                                interpolation_factor, flow_precision, motion_threshold, smoothness, flow_method, edge_mode, 
+                                interpolation_strength, upscale_factor):
         num_frames = max(49, (num_frames // 49) * 49)
         
         try:
@@ -278,7 +162,23 @@ class CogVideoXImageToVideoNodeExtended:
 
             print(f"Final video length after interpolation: {len(interpolated_frames)} frames")
 
-            return (all_frames,interpolated_frames,)
+            print(f"Final video length after interpolation: {len(interpolated_frames)} frames")
+
+            if upscale_factor > 1.0:
+                print(f"Upscaling frames by factor {upscale_factor}")
+                upscaled_frames = []
+                with tqdm(total=len(interpolated_frames), desc="Upscaling frames") as pbar:
+                    for frame in interpolated_frames:
+                        h, w = frame.shape[:2]
+                        new_h = int(h * upscale_factor)
+                        new_w = int(w * upscale_factor)
+                        upscaled = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+                        upscaled_frames.append(upscaled)
+                        pbar.update(1)
+                return (upscaled_frames,)
+            
+            return (interpolated_frames,)
+
         except Exception as e:
             print(f"Error during extended video generation: {str(e)}")
             raise
@@ -427,7 +327,7 @@ class SaveVideoNode:
     CATEGORY = "AI WizArt/CogVideoX"
 
     def save_video(self, video, filename_prefix, fps):
-        output_dir = "output"
+        output_dir = os.path.join(COMFYUI_ROOT, "output")
         os.makedirs(output_dir, exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -474,7 +374,6 @@ class SaveVideoNode:
         return {"ui": {"text": f"Video saved to {output_path}"}}
 
 NODE_CLASS_MAPPINGS = {
-    "CogVideoX Image-2-Video": CogVideoXImageToVideoNode,
     "CogVideoX Image-2-Video Extended": CogVideoXImageToVideoNodeExtended,
     "CogVideoX Save Video": SaveVideoNode,
 }

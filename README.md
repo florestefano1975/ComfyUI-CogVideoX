@@ -103,7 +103,17 @@ Original project: https://github.com/THUDM/CogVideo
 - Range: 0.0 - 1.0
 - Impact: Lower values produce subtler interpolation, higher values more pronounced interpolation.
 
+### iupscale_factor (FLOAT)
+
+- Description: Apply an upscale factor ti frames after generation and interpolation.
+- Default: 1.0
+- Range: 1 - 2
+
 ## Updates
+
+### Version 1.4
+
+Added upscale frame after generation and interpolation
 
 ### Version 1.3
 
