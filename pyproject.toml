@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-cogvideox"
+description = "Experience the CogVideoX model on ComfyUI"
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["diffusers", "accelerate", "transformers", "numpy", "torch", "torchvision", "sentencepiece", "gradio", "imageio", "imageio-ffmpeg", "ffmpeg-python", "openai", "moviepy", "pillow", "huggingface_hub", "tqdm", "scipy"]
+
+[project.urls]
+Repository = "https://github.com/florestefano1975/ComfyUI-CogVideoX"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-CogVideoX"
+Icon = ""
